@@ -1,8 +1,41 @@
 import os
 import logging
+import time
 from threading import Lock
 
-from cachetools import TTLCache
+try:
+    from cachetools import TTLCache
+except ModuleNotFoundError:
+    # Render 若尚未在 requirements.txt 安裝 cachetools，
+    # 使用簡易 TTLCache fallback，避免服務啟動直接失敗。
+    class TTLCache(dict):
+        def __init__(self, maxsize=10000, ttl=3600):
+            super().__init__()
+            self.maxsize = maxsize
+            self.ttl = ttl
+            self._expires = {}
+
+        def _purge_expired(self):
+            now = time.time()
+            expired_keys = [key for key, exp in self._expires.items() if exp <= now]
+            for key in expired_keys:
+                super().pop(key, None)
+                self._expires.pop(key, None)
+
+        def __contains__(self, key):
+            self._purge_expired()
+            return super().__contains__(key)
+
+        def __setitem__(self, key, value):
+            self._purge_expired()
+            if len(self) >= self.maxsize:
+                oldest_key = next(iter(self), None)
+                if oldest_key is not None:
+                    super().pop(oldest_key, None)
+                    self._expires.pop(oldest_key, None)
+            super().__setitem__(key, value)
+            self._expires[key] = time.time() + self.ttl
+
 from flask import Flask, request, abort
 from google import genai
 from google.genai import types
