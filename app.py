@@ -1,3 +1,6 @@
+# 已合併 ai_studio_code 2.py 與 app_longer_reply(1).py
+# 部署到 Render 時，請將此檔案命名為 app.py，Start Command 使用：gunicorn app:app
+
 import os
 import time
 import logging
@@ -8,36 +11,15 @@ from google.genai import types
 
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
-from linebot.v3.messaging import (
-    Configuration,
-    ApiClient,
-    MessagingApi,
-    ReplyMessageRequest,
-    TextMessage,
-)
+from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, ReplyMessageRequest, TextMessage
 from linebot.v3.messaging.exceptions import ApiException
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
-
-# =========================
-# 基本初始化
-# =========================
-
 app = Flask(__name__)
 
-logging.basicConfig(
-    level=logging.INFO,
-    stream=sys.stdout,
-    format="%(asctime)s %(levelname)s: %(message)s",
-)
+logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(asctime)s %(levelname)s: %(message)s")
 app.logger.setLevel(logging.INFO)
-
 print("程式已載入 app.py", flush=True)
-
-
-# =========================
-# 環境變數
-# =========================
 
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET")
@@ -50,20 +32,9 @@ if not LINE_CHANNEL_SECRET:
 if not GEMINI_API_KEY:
     app.logger.warning("缺少環境變數 GEMINI_API_KEY")
 
-
-# =========================
-# LINE 與 Gemini Client
-# =========================
-
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
-
-
-# =========================
-# 訊息去重：避免 LINE webhook 重送造成 Gemini 重複呼叫
-# 不依賴 cachetools，避免 Render 缺套件時啟動失敗
-# =========================
 
 processed_message_ids = {}
 MESSAGE_TTL_SECONDS = 3600
@@ -71,29 +42,16 @@ MAX_PROCESSED_IDS = 10000
 
 
 def cleanup_processed_message_ids():
-    """清除過期 message_id，避免記憶體一直增加。"""
     now = time.time()
-
-    expired_ids = [
-        message_id
-        for message_id, timestamp in processed_message_ids.items()
-        if now - timestamp > MESSAGE_TTL_SECONDS
-    ]
-
-    for message_id in expired_ids:
-        processed_message_ids.pop(message_id, None)
+    expired_ids = [mid for mid, ts in processed_message_ids.items() if now - ts > MESSAGE_TTL_SECONDS]
+    for mid in expired_ids:
+        processed_message_ids.pop(mid, None)
 
     if len(processed_message_ids) > MAX_PROCESSED_IDS:
         sorted_items = sorted(processed_message_ids.items(), key=lambda item: item[1])
-        ids_to_remove = sorted_items[: len(processed_message_ids) - MAX_PROCESSED_IDS]
+        for mid, _ in sorted_items[: len(processed_message_ids) - MAX_PROCESSED_IDS]:
+            processed_message_ids.pop(mid, None)
 
-        for message_id, _ in ids_to_remove:
-            processed_message_ids.pop(message_id, None)
-
-
-# =========================
-# AI Studio 設定檔
-# =========================
 
 GEMINI_MODEL = "gemini-2.5-flash"
 
@@ -154,7 +112,7 @@ SYSTEM_INSTRUCTION = """
 - 引導：與【阿拉伯商人】對話，LINE 輸入「購物清單」觸發解謎。答案：4-1題 13412133、4-2題 08200821。
 - 引導：前往皇宮尋找【膳長】，說出關鍵字：耶和華已在埃及地降下了三災。
 - 關卡 4：觸發現場關卡【捕蠅草】。
-- 通關獎勵：獲得第四災信物，關鍵字：成群的蒼蠅。法老再次反悔。
+- 通關獎勵：獲得第四災信物，關鍵字：成群的蒼蠅。
 
 ### 5. 畜疫
 - 引導：尋找【宮廷術師1】，說出關鍵字：耶和華降下畜疫在埃及。
@@ -162,148 +120,104 @@ SYSTEM_INSTRUCTION = """
 - 引導：尋找【獸醫】，說出關鍵字：街上都是發狂的牛隻。
 - 關卡 5：觸發現場關卡【牛牛保衛戰】。
 - 通關獎勵：獲得信物，關鍵字：耶和華要分別以色列的牲畜。
-- 引導：前往歌珊地尋找【希伯來長老】，說出關鍵字：歌珊地的牲畜真的都不受畜疫災影響嗎？
+- 引導：前往歌珊地尋找【希伯來長老】。
 
 ### 6. 瘡災
 - LINE 解謎：長老給予提示，LINE 輸入「城防地圖」觸發解謎。答案：6-1題 11235813、6-2題 SERVANT。
 - 引導：尋找【兵丁】，交還地圖並說出關鍵字：這是你遺落的城防地圖。
-- 引導：兵丁中招，LINE 輸入「術士一點辦法都沒有」獲得提示。前往皇宮尋找【宮廷術師2】說出：你們還站得起來嗎。
+- 引導：兵丁中招，LINE 輸入「術士一點辦法都沒有」獲得提示。前往皇宮尋找【宮廷術師2】。
 - 關卡 6：觸發現場關卡【止癢膏調配】。
 - 通關獎勵：獲得術師認輸信物，關鍵字：耶和華不是邪術及假神可以勝過的。
-- 分流檢查：若還有未闖關卡，引導玩家尋找【宰相】，說出關鍵字：重大的冰雹降下；若無未闖關卡，觸發第二區破關結語。
 
 ## [大主線 3：諸天審判與絕境（第7~9災）]
 ### 7. 雹災
 - 引導：對【宰相】說出關鍵字：重大的冰雹降下。
 - 關卡 7：觸發現場關卡【躲避飛盤】。
-- 通關獎勵：獲得信物，關鍵字：閃電烈火與巨雹。法老虛假悔改。
+- 通關獎勵：獲得信物，關鍵字：閃電烈火與巨雹。
 - LINE 解謎：自動觸發。答案：7-1題 地圖、7-2題 8730062。
 
 ### 8. 蝗災
 - 引導：尋找【農夫】，說出關鍵字：蝗蟲遮滿地面。
 - 關卡 8：觸發現場關卡【定向越野】。
-- 通關獎勵：獲得信物，關鍵字：蝗蟲吹入紅海。法老再次反悔，大地面臨極致黑暗。
+- 通關獎勵：獲得信物，關鍵字：蝗蟲吹入紅海。
 - LINE 解謎：輸入答案「如墨黑暗」獲得劇情提示。
 
 ### 9. 黑暗災
 - 引導：尋找最害怕的【宮廷守衛】，說出關鍵字：如墨的黑暗。
 - 關卡 9：觸發現場關卡【黑暗之災】。
 - 通關獎勵：獲得信物，關鍵字：唯有以色列人家中都有光亮。
-- 分流檢查：若還有未闖關卡，引導玩家回到起點，前往法老宮殿尋找【術師1】，說出密語：希伯來人的上帝；若無未闖關卡，觸發最終完美通關結語。
+- 分流檢查：若還有未闖關卡，回到起點，前往法老宮殿尋找【術師1】；若無未闖關卡，觸發最終完美通關結語。
 
 # Response Evaluation Examples
-
-範例 1：
 User: 摩西，我們到尼羅河了，但不知道接下來要幹嘛，可以給我提示嗎？
 Model: 看哪！這原本孕育埃及的尼羅河，如今在萬軍之耶和華的擊打下，已然化為滿目腥紅的血水。那在河畔唉聲嘆氣的船夫，正為他的生計與乾淨的水源發愁。我的夥伴啊，神的大能已在聊天中為你們預備了解謎的試煉，快在心中默念那四個字，向這絕望的船夫獻上「乾淨的水源」吧。莫要指望我直接降下答案，智慧隱藏在你們的腳步之中。
 
-範例 2：
 User: 聽說後面好像有蝗蟲跟黑暗災，你可以先告訴我那時候要找誰嗎？
 Model: 住口，同胞啊！耶和華神的公義審判自有祂定規的時間與步伐。強求窺探未來的諸天，只會讓你的心如法老般陷入剛硬的迷霧。此時此刻，做好你當下的工，莫要窺探未臨到你的道路。
 
 # Output Rules
-- 每次回覆請控制在 80～150 個中文字以內。
+- 每次回覆請控制在 120～220 個中文字以內。
+- 一般回覆至少要有 3 句話。
+- 回覆結構固定為：先用摩西口吻確認玩家進度，再用劇情描述加深沉浸感，最後給下一步方向。
 - 必須是完整句子，不可停在半句。
 - 結尾必須是「。」「！」「？」其中之一。
 - 若內容太長，請自行濃縮，不可截斷句子。
 - 不要輸出 Markdown、條列式清單或程式碼。
 - 玩家只是回報進度時，請先確認他的進度，再給下一步方向。
+- 不可直接公布謎題答案。
 """
 
+# AI Studio 原始參數：temperature=0.75, max_output_tokens=300, top_p=0.95
+# 實際部署保留較高 max_output_tokens，避免 LINE 回覆被截成半句；temperature 降低讓遊戲引導更穩定。
 GENERATION_CONFIG = types.GenerateContentConfig(
-    temperature=0.65,
-    max_output_tokens=600,
+    temperature=0.55,
+    max_output_tokens=700,
     top_p=0.9,
     system_instruction=SYSTEM_INSTRUCTION,
 )
 
 
-# =========================
-# 回覆完整性檢查
-# =========================
-
 def trim_to_complete_sentence(text, limit=4900):
-    """避免超過 LINE 單則文字上限，也避免硬切在半句。"""
     text = (text or "").strip()
-
     if len(text) <= limit:
         return text
-
     cut = text[:limit]
-    last_punctuation = max(
-        cut.rfind("。"),
-        cut.rfind("！"),
-        cut.rfind("？"),
-        cut.rfind("!"),
-        cut.rfind("?"),
-    )
-
+    last_punctuation = max(cut.rfind("。"), cut.rfind("！"), cut.rfind("？"), cut.rfind("!"), cut.rfind("?"))
     if last_punctuation > 0:
         return cut[: last_punctuation + 1]
-
     return cut.strip() + "。"
 
 
 def is_incomplete_reply(text):
-    """粗略偵測 Gemini 是否回了半句。"""
     if not text:
         return True
-
     text = text.strip()
-
     if len(text) < 15:
         return True
-
     if text[-1] not in "。！？!?」』":
         return True
-
-    bad_endings = [
-        "你已",
-        "耶和華",
-        "因為",
-        "所以",
-        "但是",
-        "並且",
-        "將會",
-        "可以",
-        "請你",
-        "前往",
-        "找到",
-        "完成",
-        "這",
-        "那",
-        "與",
-        "和",
-        "在",
-        "向",
-        "把",
-        "將",
-        "使",
-    ]
-
+    bad_endings = ["你已", "耶和華", "因為", "所以", "但是", "並且", "將會", "可以", "請你", "前往", "找到", "完成", "這", "那", "與", "和", "在", "向", "把", "將", "使"]
     return any(text.endswith(ending) for ending in bad_endings)
 
 
+def is_too_short_reply(text):
+    if not text:
+        return True
+    text = text.strip()
+    sentence_count = sum(text.count(mark) for mark in ["。", "！", "？", "!", "?"])
+    return len(text) < 70 or sentence_count < 2
+
+
 def log_finish_reason(response, label="Gemini"):
-    """印出 Gemini 結束原因，用來判斷是否 MAX_TOKENS。"""
     try:
         for index, candidate in enumerate(response.candidates or []):
-            print(
-                f"{label} candidate[{index}] finish_reason = {candidate.finish_reason}",
-                flush=True,
-            )
+            print(f"{label} candidate[{index}] finish_reason = {candidate.finish_reason}", flush=True)
     except Exception as e:
         print(f"無法讀取 {label} finish_reason: {e}", flush=True)
 
 
 def generate_ai_reply(user_message):
-    """呼叫 Gemini，並在偵測半句時重試一次。"""
-    response = ai_client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=user_message,
-        config=GENERATION_CONFIG,
-    )
-
+    response = ai_client.models.generate_content(model=GEMINI_MODEL, contents=user_message, config=GENERATION_CONFIG)
     reply_text = (response.text or "").strip()
 
     print("Gemini 原始回覆 repr =", repr(reply_text), flush=True)
@@ -314,11 +228,12 @@ def generate_ai_reply(user_message):
         return "看哪，我屬神的夥伴啊，此刻風沙遮蔽了話語，請再向我說一次。"
 
     reply_text = trim_to_complete_sentence(reply_text)
+    needs_retry = is_incomplete_reply(reply_text) or is_too_short_reply(reply_text)
 
-    if not is_incomplete_reply(reply_text):
+    if not needs_retry:
         return reply_text
 
-    print(f"偵測到半句回覆，準備重試一次: {repr(reply_text)}", flush=True)
+    print(f"偵測到回覆半句或過短，準備重試一次: {repr(reply_text)}", flush=True)
 
     retry_prompt = f"""
 玩家輸入：「{user_message}」
@@ -326,19 +241,17 @@ def generate_ai_reply(user_message):
 請重新生成一則完整回覆。
 規則：
 1. 使用摩西引導員口吻。
-2. 80～120 個中文字以內。
-3. 必須是完整句子。
-4. 結尾必須是「。」「！」或「？」。
-5. 不可停在半句。
-6. 不可直接公布謎題答案。
+2. 120～220 個中文字以內。
+3. 至少 3 句話。
+4. 先確認玩家進度，再用劇情描述加深沉浸感，最後給下一步方向。
+5. 必須是完整句子。
+6. 結尾必須是「。」「！」或「？」。
+7. 不可停在半句。
+8. 不可直接公布謎題答案。
+9. 不要使用條列式或 Markdown。
 """
 
-    retry_response = ai_client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=retry_prompt,
-        config=GENERATION_CONFIG,
-    )
-
+    retry_response = ai_client.models.generate_content(model=GEMINI_MODEL, contents=retry_prompt, config=GENERATION_CONFIG)
     retry_text = (retry_response.text or "").strip()
 
     print("Gemini 重試回覆 repr =", repr(retry_text), flush=True)
@@ -346,16 +259,11 @@ def generate_ai_reply(user_message):
     log_finish_reason(retry_response, "Gemini retry")
 
     retry_text = trim_to_complete_sentence(retry_text)
-
     if retry_text and not is_incomplete_reply(retry_text):
         return retry_text
 
     return "看哪，我屬神的夥伴啊！你的話語我已聽見，莫要疑惑，請照著當前的線索繼續前行。"
 
-
-# =========================
-# Flask routes
-# =========================
 
 @app.route("/", methods=["GET"])
 def index():
@@ -367,7 +275,6 @@ def index():
 def callback():
     signature = request.headers.get("X-Line-Signature", "")
     body = request.get_data(as_text=True)
-
     print("收到 LINE webhook", flush=True)
 
     try:
@@ -388,7 +295,6 @@ def handle_message(event):
     user_message = (event.message.text or "").strip()
 
     cleanup_processed_message_ids()
-
     print(f"收到訊息: message_id={message_id}, text={user_message}", flush=True)
 
     if not user_message:
@@ -399,13 +305,11 @@ def handle_message(event):
         print(f"重複訊息，跳過 Gemini: message_id={message_id}", flush=True)
         return
 
-    # 一定要放在 Gemini 前面，避免同一則 LINE 訊息重送時重複呼叫 AI
     processed_message_ids[message_id] = time.time()
 
     try:
         print(f"真正準備呼叫 Gemini: message_id={message_id}, text={user_message}", flush=True)
         reply_text = generate_ai_reply(user_message)
-
     except Exception as e:
         print(f"Gemini API 錯誤: {e}", flush=True)
         app.logger.error(f"Gemini API 錯誤: {e}")
@@ -415,19 +319,12 @@ def handle_message(event):
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             line_bot_api.reply_message_with_http_info(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text=reply_text)],
-                )
+                ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_text)])
             )
-
         print(f"LINE 回覆成功: message_id={message_id}", flush=True)
-
     except ApiException as e:
-        # 重點：LINE reply 失敗，不可以重新呼叫 Gemini
         print(f"LINE reply 錯誤，不重新呼叫 Gemini: {e}", flush=True)
         app.logger.error(f"LINE reply 錯誤，不重新呼叫 Gemini: {e}")
-
     except Exception as e:
         print(f"未知 LINE 回覆錯誤: {e}", flush=True)
         app.logger.error(f"未知 LINE 回覆錯誤: {e}")
