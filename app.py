@@ -52,7 +52,8 @@ def handle_message(event):
     try:
         # 呼叫 Gemini API 生成對話
         # justin新增測試訊息
-        app.logger.info(f"真正準備呼叫 Gemini: message_id={event.message.id}, text={user_message}")
+        # app.logger.info(f"真正準備呼叫 Gemini: message_id={event.message.id}, text={user_message}")
+        print(f"真正準備呼叫 Gemini: message_id={event.message.id}, text={user_message}", flush=True)
         response = ai_client.models.generate_content(
             model='gemini-2.5-flash',
             contents=user_message,
@@ -75,5 +76,5 @@ def handle_message(event):
 if __name__ == "__main__":
     # 本地測試時啟動 5000 埠口
     port = int(os.environ.get("PORT", 5000))
+    # app.logger.info(f"開始！！！")
     app.run(host="0.0.0.0", port=port)
-    app.logger.info(f"開始！！！")
