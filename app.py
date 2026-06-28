@@ -76,3 +76,4 @@ if __name__ == "__main__":
     # 本地測試時啟動 5000 埠口
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+    app.logger.info(f"開始！！！")
